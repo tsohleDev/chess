@@ -9,6 +9,10 @@ namespace ChessEngine
 
     public record Errors
     {
-        public static readonly Dictionary<int, string> Messages = new () {{ 1, "Invalid Move" }};
+        public static readonly Dictionary<int, string> Messages = new () {
+            { 1, "Invalid Move" },
+            { 2, "Square occupied" },
+            { 3, "Square empty" }
+        };
     };
 }
