@@ -1,13 +1,11 @@
 ﻿namespace ChessEngine;
-internal class PiecesFactory
+public class PiecesFactory
 {
-    public PiecesFactory(Player player) 
+    public PiecesFactory() 
     {
         Pieces = [];
 
-        Player opponent = player == Player.WHITE ? Player.BLACK : player;
-
-        PieceType[] whitePieceOrder =
+        PieceType[] backRank =
             [PieceType.Rook,
             PieceType.Knight,
             PieceType.Bishop,
@@ -18,35 +16,22 @@ internal class PiecesFactory
             PieceType.Rook
         ];
 
-        PieceType[] blackPieceOrder =
-           [PieceType.Rook,
-            PieceType.Knight,
-            PieceType.Bishop,
-            PieceType.King,
-            PieceType.Queen,
-            PieceType.Bishop,
-            PieceType.Knight,
-            PieceType.Rook
-       ];
-
 
         for (int i = 0; i< 8; i++)
         {
-            PieceType pieceType = player == Player.WHITE ? whitePieceOrder[i] : blackPieceOrder[i];
-
-            Piece userpiece = new Piece((Square)i, player, pieceType);
+            Piece userpiece = new Piece((Square)(1 << i), Player.WHITE, backRank[i]);
             Pieces.Add(userpiece);
 
-            Piece userPawn = new Piece((Square)i + 8, player, PieceType.Pawn);
+            Piece userPawn = new Piece((Square)(256 << i), Player.WHITE, PieceType.PAWN);
             Pieces.Add(userPawn);
 
-            Piece opponentpiece = new Piece((Square)i + 56, opponent, pieceType);
+            Piece opponentpiece = new Piece((Square)(72057594037927936 << i), Player.BLACK, backRank[i]);
             Pieces.Add(opponentpiece);
 
-            Piece opponentPawn = new Piece((Square)i + 8, player, PieceType.Pawn);
+            Piece opponentPawn = new Piece((Square)(281474976710656 << i), Player.BLACK, PieceType.PAWN);
             Pieces.Add(opponentPawn);
         }
     }
 
-    List<Piece> Pieces { get; set; }
+    public List<Piece> Pieces { get; set; }
 }
