@@ -1,13 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace ChessEngine.Rules;
 
-namespace ChessEngine.Rules
+internal interface IChessRules
 {
-    internal interface IChessRules
-    {
-        public bool IsMoveValid(Piece from, Piece to);
-        public bool IsCheckMate();
-        public bool IsDraw();
-    }
+    public bool IsMoveValid(Piece from, Piece to);
+    public bool IsCheckMate(Square[] attackProfile);
+    public bool IsCheck(Square[] attackProfile);
+    public bool IsDraw();
 }
