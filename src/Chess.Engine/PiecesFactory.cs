@@ -6,14 +6,14 @@ public class PiecesFactory
         Pieces = [];
 
         PieceType[] backRank =
-            [PieceType.Rook,
-            PieceType.Knight,
-            PieceType.Bishop,
-            PieceType.Queen,
-            PieceType.King,
-            PieceType.Bishop,
-            PieceType.Knight,
-            PieceType.Rook
+            [PieceType.ROOK,
+            PieceType.KNIGHT,
+            PieceType.BISHOP,
+            PieceType.QUEEN,
+            PieceType.KING,
+            PieceType.BISHOP,
+            PieceType.KNIGHT,
+            PieceType.ROOK
         ];
 
 

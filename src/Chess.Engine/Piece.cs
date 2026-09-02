@@ -1,3 +1,3 @@
 ﻿namespace ChessEngine;
 
-internal record Piece(Square Origin, Player Colour, PieceType Type);
+public record struct Piece(Square Current, Player Colour, PieceType Type);

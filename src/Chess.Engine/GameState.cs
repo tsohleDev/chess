@@ -1,3 +1,3 @@
 ﻿namespace ChessEngine;
 
-public record struct GameState(ulong Squares, Piece[] Pieces, Player Turn);
+public record struct GameState(ulong Squares, bool Check, Piece[] Pieces, Player Turn);

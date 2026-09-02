@@ -3,7 +3,7 @@ using ChessEngine.Rules;
 
 namespace ChessEngine;
 
-public class Board
+public class Boarda
 {
 
     AlgebraicNotation _score;
@@ -17,31 +17,51 @@ public class Board
         Squares = state.Squares;
         Pieces = state.Pieces;
         Turn = state.Turn;
+        Check = state.Check;
     }
 
     public ulong Squares { get; set; }
     public Player Turn { get; set; }
     public Piece[] Pieces { get; set; }
+    public bool Check { get; set; }
 
     public void Move(Player player, Piece from, Square to)
     {        
 
         if (player != Turn) { return; }
+
+        var opponentAttack = _rules.OpponentAttackProfile();
+
+        if (Check)
+        {
+            foreach(var s in opponentAttack)
+            {
+                if (s == to)
+                {
+                    throw new Exception("Still check");
+                }
+            }
+        }
         
         CaptureSquare(from, to);
         RemovePiece(from);
         PutPiece(from, to);
 
+        // is it Draw
+        bool isDraw = _rules.IsDraw();
+
+
         // is it check
+        bool isCheck = _rules.IsCheck(opponentAttack);
 
 
         // is it checkmate
+        bool isCheckMate = _rules.IsCheckMate(opponentAttack);
 
         // opponent's turn
         Player nextTurn = (Player)((int)Turn * -1);
-        GameState newState = new GameState(Squares, Pieces, nextTurn);
+        GameState newState = new GameState(Squares, isCheck, Pieces, nextTurn);
        
-
 
         // append algebraic notation
         _score.AddState(newState, from.Current, to);
