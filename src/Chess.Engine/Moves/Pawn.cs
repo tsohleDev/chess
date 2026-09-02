@@ -3,99 +3,132 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace ChessEngine.Moves
+namespace ChessEngine.Moves;
+
+internal class Pawn(GameState State, AlgebraicNotation Score, Piece Piece) : Moves(State)
 {
-    internal class Pawn : IAvailableMoves
+    public override IEnumerable<Square> GetMoveSquares()
     {
-        public override IEnumerable<Square> GetSquares(Piece piece)
+        int[] pattern = [8];
+
+        DoubleJump(ref pattern);
+        EnPassant( ref pattern);
+        Takes(ref pattern);
+
+        return PatternToSquares(pattern, Piece.Current, Piece.Colour == Player.BLACK, Piece.Colour == Player.WHITE);
+    }
+
+    public override IEnumerable<Square> GetAttackSquares()
+    {
+        int[] pattern = [];
+
+        Takes(ref pattern);
+
+        return PatternToSquares(pattern, Piece.Current, Piece.Colour == Player.BLACK, Piece.Colour == Player.WHITE);
+    }
+
+    protected void DoubleJump(ref int[] result)
+    {
+        int direction = (int)Piece.Colour;
+        int current = (int)Piece.Current;
+
+        Square[] homeRank = Piece.Colour == Player.WHITE ?
+            [Square.a2, Square.b2, Square.c2, Square.d2, Square.e2, Square.f2, Square.h2, Square.g2]
+            : [Square.a2, Square.b2, Square.c2, Square.d2, Square.e2, Square.f2, Square.h2, Square.g2];
+
+        bool firstMove = false;
+        bool nextSquareEmpty = false;
+        foreach (Square s in homeRank)
         {
-            int[] pattern = [8];
-
-            GameState state = GameState.Instance;
-
-            DoubleJump(piece, ref pattern);
-            EnPassant(piece, ref pattern);
-            Takes(piece, ref pattern);
-
-            return PatternToSquares(pattern, piece.Current)
-                
-                .RemoveBadSquares();
-        }
-
-        protected void DoubleJump(Piece piece, ref int[] result)
-        {
-            GameState state = GameState.Instance;
-            int direction = (int)piece.Colour;
-            int current = (int)piece.Current;
-
-            bool firstMove = state.AlgebraicNotation.Any(move => move.Item1 == piece.Current);
-            bool nextSquareEmpty = state.Squares[current + 8 * direction];
-
-            if (firstMove && nextSquareEmpty) { result.Append(16 * direction); }
-        }
-
-        protected void Takes(Piece piece, ref int[] result)
-        {
-            GameState state = GameState.Instance;
-            int current = (int)piece.Current;
-            int[] takesPositons = [9, 7];
-            int direction = (int)piece.Colour;
-
-            foreach (int i in takesPositons)
+            if (s == Piece.Current)
             {
-                int nextSquare = current + i * direction;
+                firstMove = true;
 
-                bool nextOccupied = state.Squares[nextSquare];
-                if (!nextOccupied) continue;
+                Func<ulong, ulong> nextPiece = c => Piece.Colour == Player.WHITE ?
+                    c << 8 : c >> 8;
 
-                bool oppositePlayerPiece = state.ActivePieces.Any(p =>
-                            (int)p.Current == nextSquare
-                            && (int)p.Colour == direction * -1
-                );
 
-                if (oppositePlayerPiece) { result.Append(nextSquare - current); }
+                nextSquareEmpty = (State.Squares ^ nextPiece((ulong)Piece.Current)) > 0;
             }
         }
 
+        if (firstMove && nextSquareEmpty) 
+        { 
+            result.Append(16); 
+        }
+    }
+    protected void EnPassant(ref int[] result)
+    {
+        ulong current = (ulong)Piece.Current;
+        int direction = (int)Piece.Colour;
+        int[] leftAndRight = [-1, 1];
 
-        protected void EnPassant(Piece piece, ref int[] result)
+        foreach (int i in leftAndRight)
         {
-            GameState state = GameState.Instance;
-            int current = (int)piece.Current;
-            int direction = (int)piece.Colour;
-            int[] leftAndRight = [-1, 1];
+            ulong adjecentSquare = i == -1 ? current >> 1 : current << 1;
+            bool adjecentOccupied = (State.Squares ^ adjecentSquare) > 0;
 
-            foreach (int i in leftAndRight)
+            if (!adjecentOccupied) continue;
+
+            ulong targetSquare = (ulong)Piece.Colour == 1
+            ? (i == -1 ? current << 7 : current << 9)
+            : (i == -1 ? current >> 9 : current >> 7);
+
+            bool targetOccupied = (State.Squares ^ targetSquare) > 0;
+
+            if (targetOccupied) continue;
+
+            // last move should be a pawn to target
+            int length = Score.States.Length;
+            Square lastMove = Score.TOs
+                              .ElementAt(length - 1);
+
+            bool lastMoveIsAdjecent = (ulong)lastMove == adjecentSquare;
+
+            bool adjecentIsPawn = false;
+            foreach (Piece p in State.Pieces)
             {
-                int adjecentSquare = current + i;
-                bool adjecentOccupied = state.Squares[adjecentSquare];
-
-                if (!adjecentOccupied) continue;
-
-                int targetSquare = (int)piece.Colour == 1
-                ? (i == -1 ? current + 7 : current + 9)
-                : (i == -1 ? current - 9 : current - 7);
-                bool targetOccupied = state.Squares[targetSquare];
-
-                if (targetOccupied) continue;
-
-                // last move should be a pawn to target
-                int length = state.AlgebraicNotation.Count;
-                Square lastMove = state.AlgebraicNotation
-                                           .ElementAt(length - 1)
-                                           .Item2;
-
-                bool lastMoveIsAdjecent = (int)lastMove == adjecentSquare;
-                bool adjecentIsPawn = state.ActivePieces
-                                        .Any(p => (int)p.Current == adjecentSquare
-                                            && p.Type == PieceType.PAWN
-                                            && (int)p.Colour == direction * -1);
-
-
-                if (!lastMoveIsAdjecent || !adjecentIsPawn) continue;
-  
-                result.Append(targetSquare - current);
+                if ((ulong)p.Current == adjecentSquare
+                    && p.Type == PieceType.PAWN
+                    && (int)p.Colour == direction * -1)
+                {
+                    adjecentIsPawn = true;
+                }
             }
+
+
+            if (!lastMoveIsAdjecent || !adjecentIsPawn) continue;
+
+            result.Append((int)(targetSquare - current));
+        }
+    }
+    protected void Takes(ref int[] result)
+    {
+        ulong current = (ulong)Piece.Current;
+        int[] takesPositons = [9, 7];
+        int direction = (int)Piece.Colour;
+
+        foreach (int i in takesPositons)
+        {
+            ulong nextSquare = Piece.Colour == Player.WHITE
+               ? current << i
+                : current >> i;
+
+            bool nextOccupied = (State.Squares ^ nextSquare) > 0;
+            if (!nextOccupied) continue;
+
+
+            bool oppositePlayerPiece = false;
+            foreach (Piece p in State.Pieces)
+            {
+                if ((ulong)p.Current == nextSquare
+                        && (int)p.Colour == direction * -1)
+                {
+                    oppositePlayerPiece = true;
+                }
+            }
+
+            if (oppositePlayerPiece) { result.Append((int)(nextSquare - current)); }
         }
     }
 }
