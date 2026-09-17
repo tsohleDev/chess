@@ -2,7 +2,7 @@
 
 public enum Player : sbyte
 {
-    NONE = 0,
-    WHITE = 1,
-    BLACK = -1
+    WHITE = 0,
+    BLACK = 1,
+    NONE = 2
 }

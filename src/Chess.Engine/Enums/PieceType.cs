@@ -3,9 +3,10 @@
 public enum PieceType : byte
 {
     PAWN = 0,
-    Rook = 1,
-    Knight = 2,
-    Bishop = 3,
-    Queen = 4,
-    King = 5
+    ROOK = 1,
+    KNIGHT = 2,
+    BISHOP = 3,
+    QUEEN = 4,
+    KING = 5,
+    NONE = 6
 };
