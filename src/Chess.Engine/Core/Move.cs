@@ -7,15 +7,17 @@ public readonly struct Move
     public PieceType MovedPiece { get; }
     public PieceType CapturedPiece { get; }
     public bool IsEnPassant { get; }
-    public bool IsCastling { get; }
+    public CastlingRights CastleType { get; }
+    public PieceType CrownPiece { get; }
 
-    public Move(Square from, Square to, PieceType moved, PieceType captured = PieceType.NONE, bool isEp = false, bool isCastle = false)
+    public Move(Square from, Square to, PieceType moved, PieceType captured = PieceType.NONE, bool isEp = false, CastlingRights castle = CastlingRights.NONE, PieceType crownPiece = PieceType.NONE)
     {
         From = from;
         To = to;
         MovedPiece = moved;
         CapturedPiece = captured;
         IsEnPassant = isEp;
-        IsCastling = isCastle;
+        CastleType = castle;
+        CrownPiece = crownPiece;
     }
 }
