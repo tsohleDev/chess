@@ -6,30 +6,29 @@ public static class AttackScanner
 {
     public static bool IsSquareAttacked(Board board, Square square, Player attackerColor)
     {
-        int opp = (int)attackerColor;
 
-        // 1. Pawn attacks (Reverse the attack direction)
-        ulong pawnMask = (ulong)square;
-        if (attackerColor == Player.WHITE)
-        {
-            ulong attacks = ((pawnMask >> 7) & ~Bitboard.FileA) | ((pawnMask >> 9) & ~Bitboard.FileH);
-            if ((attacks & board.Pieces[(int)PieceType.PAWN] & board.Colors[opp]) != 0) return true;
-        }
-        else
-        {
-            ulong attacks = ((pawnMask << 7) & ~Bitboard.FileH) | ((pawnMask << 9) & ~Bitboard.FileA);
-            if ((attacks & board.Pieces[(int)PieceType.PAWN] & board.Colors[opp]) != 0) return true;
-        }
+        if (IsAttackedBy(PieceType.PAWN, MoveGenerator.GetPawnAttacks(square, attackerColor), board, square, attackerColor)) return true;
+        if (IsAttackedBy(PieceType.KING, MoveGenerator.GetKingAttacks(square), board, square, attackerColor)) return true;
+        if (IsAttackedBy(PieceType.KNIGHT, MoveGenerator.GetKingAttacks(square), board, square, attackerColor)) return true;
+        if (IsAttackedBy(PieceType.BISHOP, MoveGenerator.GetBishopAttacks(square, board.Occupancy), board, square, attackerColor)) return true;
+        if (IsAttackedBy(PieceType.ROOK, MoveGenerator.GetRookAttacks(square, board.Occupancy), board, square, attackerColor)) return true;
 
-        // 2. Knight Attacks
-        if ((MoveGenerator.GetKnightAttacks(square) & board.Pieces[(int)PieceType.KNIGHT] & board.Colors[opp]) != 0) return true;
+        if (IsAttackedBy(PieceType.QUEEN, MoveGenerator.GetBishopAttacks(square, board.Occupancy), board, square, attackerColor)) return true;
+        if (IsAttackedBy(PieceType.QUEEN, MoveGenerator.GetRookAttacks(square, board.Occupancy), board, square, attackerColor)) return true;
 
-        // 3. King Attacks
-        if ((MoveGenerator.GetKingAttacks(square) & board.Pieces[(int)PieceType.KING] & board.Colors[opp]) != 0) return true;
+        return false;
+    }
 
-        // Note: For Rooks, Bishops, Queens in a fully optimized engine, you use Magic Bitboards.
-        // For this snippet, you would implement ray-casting outward from the square.
-        // If a ray hits an enemy sliding piece, return true.
+    private static ulong OpponentPieceSquares(Board board, PieceType piece)
+    {
+        var opponent = (ulong)(board.Turn) ^ 1;
+        return board.Pieces[(int)piece] & board.Colors[opponent];
+    }
+
+    private static bool IsAttackedBy(PieceType piece, ulong attacks, Board board, Square square, Player attackerColor)
+    {
+        if ((attacks & OpponentPieceSquares(board, piece)) != 0) return true;
+
         return false;
     }
 
