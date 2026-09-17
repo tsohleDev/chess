@@ -1,6 +1,4 @@
-﻿
-
-using System.Drawing;
+﻿using System.Text.RegularExpressions;
 
 namespace ChessEngine.Core;
 
@@ -8,17 +6,18 @@ public class Board
 {
     public readonly ulong[] Pieces = new ulong[6];
     public readonly ulong[] Colors = new ulong[2];
+    public (PieceType, Player)[] Captured = [];
 
     public Player Turn { get; private set; }
-
-    // Check and Draw and state mate
-
-    public Square EnPassantSquare { get; private set; } = Square.NONE;
+    public int EnPassantFile { get; private set; } = -1;
+    public CastlingRights Castling { get; set; } = CastlingRights.NONE;
+    public CastlingFlags CastlingFlag { get; set; } = CastlingFlags.NONE;
     public int HalfMoveClock { get; private set; } = -1;
 
-    // Derived properties for easy access
-    public ulong Occupancy => Colors[(int)Player.WHITE] | Colors[(int)Player.BLACK];
+    public ulong Occupancy => Colors[(byte)Player.WHITE] | Colors[(byte)Player.BLACK];
     public ulong Empty => ~Occupancy;
+
+    public Board Clone() => (Board)this.MemberwiseClone();
 
     public Board()
     {
@@ -27,7 +26,6 @@ public class Board
 
     public void LoadStandardPosition()
     {
-        // Hexadecimal representation of standard chess starting squares
         Pieces[(int)PieceType.PAWN] = 0x00FF00000000FF00;
         Pieces[(int)PieceType.KNIGHT] = 0x4200000000000042;
         Pieces[(int)PieceType.BISHOP] = 0x2400000000000024;
@@ -41,55 +39,219 @@ public class Board
         Turn = Player.WHITE;
     }
 
-    // Fast copy for move simulation (Check detection)
-    public Board Clone() => (Board)this.MemberwiseClone();
-
     public void MakeMove(Move move)
     {
         int color = (int)Turn;
         int oppColor = color ^ 1;
 
-        // Reset Half-Move clock for Pawn moves or Captures, otherwise increment
-        if (move.MovedPiece == PieceType.PAWN || move.CapturedPiece != PieceType.NONE)
-            HalfMoveClock = 0;
-        else
-            HalfMoveClock++;
+        HandleHalfClock(move.MovedPiece, move.CapturedPiece);
 
-        // 1. Move the piece
-        Pieces[(int)move.MovedPiece] = Bitboard.ClearBit(Pieces[(int)move.MovedPiece], move.From);
-        Colors[color] = Bitboard.ClearBit(Colors[color], move.From);
+        Capture(move.CapturedPiece, move.IsEnPassant, move.To, (Player)oppColor);
 
-        Pieces[(int)move.MovedPiece] = Bitboard.SetBit(Pieces[(int)move.MovedPiece], move.To);
-        Colors[color] = Bitboard.SetBit(Colors[color], move.To);
-
-        // 2. Handle Standard Captures
-        if (move.CapturedPiece != PieceType.NONE && !move.IsEnPassant)
+        if (move.CastleType == CastlingRights.NONE 
+            && move.CrownPiece == PieceType.NONE)
         {
-            Pieces[(int)move.CapturedPiece] = Bitboard.ClearBit(Pieces[(int)move.CapturedPiece], move.To);
-            Colors[oppColor] = Bitboard.ClearBit(Colors[oppColor], move.To);
+            RemovePiece(move.MovedPiece, Turn, move.From);
+            PutPiece(move.MovedPiece, Turn, move.To);
         }
+       
+        HandleEnPassant(move.IsEnPassant, move.To, Turn, (Player)oppColor);
+        UpdateEnPassantTarget(move.MovedPiece, move.To, move.From);
 
-        // 3. Handle En Passant Capture
-        if (move.IsEnPassant)
-        {
-            // The captured pawn is on the same rank as the 'From' square, but the 'To' file
-            Square captureSquare = color == (byte)Player.WHITE ? Bitboard.RightShift(move.To, 8) : Bitboard.LeftShift(move.To, 8);
-            Pieces[(int)PieceType.PAWN] = Bitboard.ClearBit(Pieces[(int)PieceType.PAWN], captureSquare);
-            Colors[oppColor] = Bitboard.ClearBit(Colors[oppColor], captureSquare);
-        }
+        HandleCastling(move.CastleType);
 
-        // 4. Update En Passant Target Square for next turn
-        if (move.MovedPiece == PieceType.PAWN && ((ulong)move.To >> 16 == (ulong)move.From || (ulong)move.From >> 16 == (ulong)move.To))
-        {
-            EnPassantSquare = color == (byte)Player.WHITE ? Bitboard.LeftShift(move.From, 8) : Bitboard.RightShift(move.From, 8);
-        }
-        else
-        {
-            EnPassantSquare = Square.NONE;
-        }
+        HandleCrowning(move.From, move.To, Turn, move.CapturedPiece, move.CrownPiece);
 
+        AddCastlingRight();
+        AddCastlingFlags(move.From);
+        
         Turn = (Player)oppColor;
     }
+
+
+
+    public void HandleCastling(CastlingRights castleType)
+    {
+        CastlingFlags kingFlag = Turn == Player.WHITE ? CastlingFlags.WHITE_KING_MOVED : CastlingFlags.BLACK_KING_MOVED;
+
+        if (CastlingFlag.HasFlag(kingFlag)) throw new Exception("Castling Attempt failed, King has moved");
+
+        switch (castleType)
+        {
+            case CastlingRights.WHITE_QUEEN_SIDE:
+                CastleShufle(CastlingRights.WHITE_QUEEN_SIDE, (Square.e1, Square.c1, Square.a1, Square.d1));
+                break;
+            case CastlingRights.BLACK_QUEEN_SIDE:
+                CastleShufle(CastlingRights.BLACK_QUEEN_SIDE, (Square.e8, Square.c8, Square.a8, Square.d8));
+                break;
+            case CastlingRights.WHITE_KING_SIDE:
+                CastleShufle(CastlingRights.WHITE_KING_SIDE, (Square.e1, Square.g1, Square.h1, Square.f1));
+                break;
+            case CastlingRights.BLACK_KING_SIDE:
+                CastleShufle(CastlingRights.BLACK_KING_SIDE, (Square.e8, Square.g8, Square.h8, Square.f8));
+                break;
+            default:
+                throw new Exception("Invalid Castling");
+        }
+    }
+
+    private void CastleShufle(CastlingRights right, (Square, Square, Square, Square) squares)
+    {
+        if (!Castling.HasFlag(right)) throw new Exception("Castling Attempt failed");
+
+        var (kingFrom, kingTo, rookFrom, rookTo) = squares;
+
+        RemovePiece(PieceType.KING, Turn, kingFrom);
+        PutPiece(PieceType.KING, Turn, kingTo);
+
+        RemovePiece(PieceType.ROOK, Turn, rookFrom);
+        PutPiece(PieceType.ROOK, Turn, rookTo);
+    }
+
+
+    private void RemovePiece(PieceType piecetype, Player colour, Square from)
+    {
+        if (piecetype == PieceType.NONE) return;
+
+        Pieces[(int)piecetype] = Bitboard.ClearBit(Pieces[(int)piecetype], from);
+        Colors[(int)colour] = Bitboard.ClearBit(Colors[(int)colour], from);
+    }
+
+    private void PutPiece(PieceType piecetype, Player colour, Square to)
+    {
+        Pieces[(int)piecetype] = Bitboard.SetBit(Pieces[(int)piecetype], to);
+        Colors[(int)colour] = Bitboard.SetBit(Colors[(int)colour], to);
+    }
+
+
+    private void AddCastlingRight()
+    {
+        (Square[], CastlingFlags, CastlingRights)[] tuples = [
+            ([Square.b1, Square.c1, Square.d1], CastlingFlags.WHITE_QUEEN_SIDE_ROOK_MOVED, CastlingRights.WHITE_QUEEN_SIDE),
+            ([Square.f1, Square.h1], CastlingFlags.WHITE_KING_SIDE_ROOK_MOVED, CastlingRights.WHITE_KING_SIDE),
+            ([Square.b8, Square.c8, Square.d8], CastlingFlags.BLACK_QUEEN_SIDE_ROOK_MOVED, CastlingRights.BLACK_QUEEN_SIDE),
+            ([Square.f8, Square.h8], CastlingFlags.BLACK_KING_SIDE_ROOK_MOVED, CastlingRights.BLACK_KING_SIDE)
+            ];
+
+        foreach (var (squares, flag, right) in tuples)
+        {
+            ulong path = 0;
+            foreach (var s in squares)
+            {
+                path |= (ulong)s;
+            }
+
+            var kingFlag = Turn == Player.WHITE ? CastlingFlags.WHITE_KING_MOVED : CastlingFlags.BLACK_KING_MOVED;
+            if ((Occupancy & path) == 0 && !CastlingFlag.HasFlag(flag) && !CastlingFlag.HasFlag(kingFlag))
+            {
+                Castling |= right;
+            }
+        }
+    }
+
+    private void AddCastlingFlags(Square from)
+    {
+        if (from == Square.e1)
+        {
+            Castling &= ~CastlingRights.WHITE_QUEEN_SIDE;
+            Castling &= ~CastlingRights.WHITE_KING_SIDE;
+
+            return;
+        }
+        else if (from == Square.e8)
+        {
+            Castling &= ~CastlingRights.BLACK_QUEEN_SIDE;
+            Castling &= ~CastlingRights.BLACK_KING_SIDE;
+
+            return;
+        }
+
+
+        (Square, CastlingFlags, CastlingRights)[] tuples = [
+            (Square.e1, CastlingFlags.WHITE_KING_MOVED, CastlingRights.NONE),
+            (Square.e8, CastlingFlags.BLACK_KING_MOVED, CastlingRights.NONE),
+            (Square.a1, CastlingFlags.WHITE_QUEEN_SIDE_ROOK_MOVED, CastlingRights.WHITE_QUEEN_SIDE),
+            (Square.g1, CastlingFlags.WHITE_KING_SIDE_ROOK_MOVED, CastlingRights.WHITE_KING_SIDE),
+            (Square.a8, CastlingFlags.BLACK_QUEEN_SIDE_ROOK_MOVED, CastlingRights.BLACK_QUEEN_SIDE),
+            (Square.g8, CastlingFlags.BLACK_KING_SIDE_ROOK_MOVED, CastlingRights.BLACK_KING_SIDE)
+            ];
+
+        foreach (var (square, flag, right) in tuples)
+        {
+            if (from == square && !CastlingFlag.HasFlag(flag))
+            {
+                CastlingFlag |= flag;
+            
+                if (Castling.HasFlag(right) && right != CastlingRights.NONE)
+                {
+                    Castling &= ~right;
+                }  
+            }
+        }
+    }
+ 
+    private void Capture(PieceType captured, bool isEnPassant, Square to, Player opponent)
+    {
+        if (captured == PieceType.NONE || isEnPassant) return;
+
+
+        Pieces[(int)captured] = Bitboard.ClearBit(Pieces[(int)captured], to);
+        Colors[(int)opponent] = Bitboard.ClearBit(Colors[(int)opponent], to);
+
+        Captured.Append((captured, opponent));
+    }
+
+
+    private void HandleEnPassant(bool isEnPassant, Square to, Player color, Player opponent)
+    {
+        if (!isEnPassant) return;
+        
+        Square captureSquare = color == (byte)Player.WHITE ? Bitboard.RightShift(to, 8) : Bitboard.LeftShift(to, 8);
+
+        RemovePiece(PieceType.PAWN, opponent, captureSquare);
+
+        Captured.Append((PieceType.PAWN, opponent));
+    }
+
+    private void UpdateEnPassantTarget(PieceType moved, Square to, Square from)
+    {
+        if (moved == PieceType.PAWN && ((ulong)to >> 16 == (ulong)from || (ulong)from >> 16 == (ulong)to))
+        {
+            EnPassantFile = Bitboard.SquareToFile(from);
+        }
+        else
+        {
+            EnPassantFile = -1;
+        }
+    }
+    
+    private void HandleHalfClock(PieceType moved, PieceType captured)
+    {
+        if (moved == PieceType.PAWN || captured != PieceType.NONE)
+        {
+            HalfMoveClock = 0;
+        }
+        else
+        {
+            HalfMoveClock++;
+        }
+    }
+
+
+
+    private void HandleCrowning(Square from, Square to, Player color, PieceType captured, PieceType crown)
+    {
+        if (crown == PieceType.NONE) return;
+
+        var opponent = (Player)((int)color ^ 1);
+
+        RemovePiece(captured, opponent, to);
+        
+        RemovePiece(PieceType.PAWN, color, from);
+        PutPiece(crown, color, to);
+    }
+
+
 
     public PieceType GetPieceAt(Square square)
     {
@@ -98,6 +260,7 @@ public class Board
             if (Bitboard.IsBitSet(Pieces[i], square))
                 return (PieceType)i;
         }
+
         return PieceType.NONE;
     }
 }
